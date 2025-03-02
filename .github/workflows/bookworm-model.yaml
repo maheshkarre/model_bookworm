@@ -1,0 +1,103 @@
+name: Build and Release Edgeble-6 Bookworm Model
+
+on:
+  push:
+    branches:
+      - main      
+
+jobs:
+  build:
+    permissions: write-all
+    name: Edgeble-6 Bookworm Model runner
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v1
+
+    - name: Setup SSH
+      env:
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      run: |
+        mkdir -p ~/.ssh/
+        echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+        echo "$SSH_PUBLIC_KEY" > ~/.ssh/id_rsa.pub
+        echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa.pub
+        chmod 600 ~/.ssh/known_hosts
+
+        # Configure SSH to use this key for GitLab
+        echo -e "Host gitlab.com\n\tIdentityFile ~/.ssh/id_rsa\n" >> ~/.ssh/config
+
+        # Test the SSH connection (optional)
+        ssh -T git@gitlab.com || echo "SSH connection test failed, but continuing..."
+        
+    - name: Set up Remote Docker
+      uses: docker/setup-buildx-action@v1
+
+    - name: Authenticate Docker Registry
+      run: |
+        echo "Decoded Docker Auth Config:"
+        echo "${{ secrets.DOCKER_AUTH_CONFIG }}"
+        decoded_config=$(echo -n "${{ secrets.DOCKER_AUTH_CONFIG }}" | base64 --decode)
+        echo "$decoded_config" > $HOME/.docker/config.json
+        cat $HOME/.docker/config.json  
+
+    - name: Install container
+      run: |
+
+        sudo apt-get update
+        sudo apt install -y qemu-user-static binfmt-support
+
+    - name: Build yoloAll
+      run: |
+
+        echo "Clone builder.."
+        git clone git@gitlab.com:maheshkarre1/bookwormmodelbuilder.git builder-yoloAll && cd builder-yoloAll
+
+        # Set the github_action value
+        github_action=true
+        echo "The value of github_action is set to $github_action"
+
+        # Insert github_action below the model key in the configuration file
+        echo "Inserting github_action: $github_action below the model key..."
+        sed -i '/^model:/a\  - yolov8n\n' .config-kde-byte-track.yaml
+        sed -i '/recipe: recipe-kde-byte-track.yaml/a \  github_action: '"$github_action" .config-kde-byte-track.yaml
+        cat .config-kde-byte-track.yaml
+
+        echo "Clone container.."
+        git clone git@gitlab.com:edgeble/tools/edgeble-container.git /tmp/edgeble-container
+        sudo cp -v /tmp/edgeble-container/edgeble-* /usr/local/bin/
+        sudo chmod +x /usr/local/bin/edgeble-*
+
+        echo "Building Bookworm yolov5s-byte-track model..."
+        edgeble-container -b v1.6 -c .config-kde-byte-track.yaml bookworm
+
+    - name: Upload output artifacts
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: "v1.6"
+        body: |
+          - Summary
+            ```
+            - Bookworm core changes
+            ```
+          - SD
+            ```
+            sudo bmaptool copy --bmap openeia-6tops-bookworm-x11-gnome-v1.6-yolo5s-byte-track.bmap openeia-6tops-bookworm-x11-gnome-v1.6-yolov5s-byte-track.img.gz /dev/sdX
+            ```
+          - eMMC
+            ```
+            - boot from SD
+            - use u-boot 'ums 0 mmc 0'
+            - Program eMMC from host same like MicroSD
+            ```
+        files: |
+          ${{ github.workspace }}/builder-yoloAll/openeia-6tops-bookworm-x11-kde-v1.6.bmap
+          ${{ github.workspace }}/builder-yoloAll/openeia-6tops-bookworm-x11-kde-v1.6.img.gz
+
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
