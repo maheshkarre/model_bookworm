@@ -64,7 +64,7 @@ jobs:
 
         # Insert github_action below the model key in the configuration file
         echo "Inserting github_action: $github_action below the model key..."
-        sed -i '/^model:/a\  - yolov8n\n' .config-kde-byte-track.yaml
+        sed -i '/^model_path:/a\  - yolov8n\n' .config-kde-byte-track.yaml
         sed -i '/recipe: recipe-kde-byte-track.yaml/a \  github_action: '"$github_action" .config-kde-byte-track.yaml
         cat .config-kde-byte-track.yaml
 
