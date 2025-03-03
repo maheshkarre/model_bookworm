@@ -60,7 +60,7 @@ jobs:
 
         # Set the github_action value
         github_action=true
-        model_path=yolov8n
+        model_path=model
         echo "The value of github_action is set to $github_action"
 
         # Insert github_action below the model key in the configuration file
